@@ -107,3 +107,8 @@ env-vars.txt
 tap_oracle/__pycache__/
 *~
 config.json
+catalog.json
+state.json
+
+.DS_Store
+.idea/

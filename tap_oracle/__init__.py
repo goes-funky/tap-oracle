@@ -526,6 +526,7 @@ def do_sync(conn_config, catalog, default_replication_method, state):
    state = sync_log_miner_streams(conn_config, list(logical_streams), state, end_scn)
    return state
 
+
 def main_impl():
    args = utils.parse_args(REQUIRED_CONFIG_KEYS)
    conn_config = {'user': args.config['user'],
@@ -555,3 +556,7 @@ def main():
     except Exception as exc:
         LOGGER.critical(exc)
         raise exc
+
+
+if __name__ == '__main__':
+    main()
