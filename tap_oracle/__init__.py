@@ -456,10 +456,13 @@ def sync_traditional_stream(conn_config, stream, state, sync_method, end_scn):
       LOGGER.info("Stream %s is using full_table replication", stream.tap_stream_id)
       state = singer.set_currently_syncing(state, stream.tap_stream_id)
       common.send_schema_message(stream, [])
+
       if md_map.get((), {}).get('is-view'):
          state = full_table.sync_view(conn_config, stream, state, desired_columns)
+         LOGGER.info("State %s set for view", state)
       else:
          state = full_table.sync_table(conn_config, stream, state, desired_columns)
+         LOGGER.info("State %s set for table", state)
    elif sync_method == 'log_initial':
       #start off with full-table replication
       state = singer.set_currently_syncing(state, stream.tap_stream_id)
