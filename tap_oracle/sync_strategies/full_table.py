@@ -139,22 +139,32 @@ def sync_table(conn_config, stream, state, desired_columns):
 
       rows_saved = 0
       LOGGER.info("select %s", select_sql)
-      for row in cur.execute(select_sql):
-         ora_rowscn = row[-1]
-         row = row[:-1]
-         record_message = common.row_to_singer_message(stream,
-                                                       row,
-                                                       nascent_stream_version,
-                                                       desired_columns,
-                                                       time_extracted)
 
-         singer.write_message(record_message)
-         state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', ora_rowscn)
-         rows_saved = rows_saved + 1
-         if rows_saved % UPDATE_BOOKMARK_PERIOD == 0:
-            singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
+      batch_size = 100
+      cur.execute(select_sql)
 
-         counter.increment()
+      while True:
+         # row = cur.fetchone()
+         rows = cur.fetchmany(batch_size)
+         if not rows:
+            break
+
+         for row in rows:
+            ora_rowscn = row[-1]
+            row = row[:-1]
+            record_message = common.row_to_singer_message(stream,
+                                                          row,
+                                                          nascent_stream_version,
+                                                          desired_columns,
+                                                          time_extracted)
+
+            singer.write_message(record_message)
+            state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', ora_rowscn)
+            rows_saved = rows_saved + 1
+            if rows_saved % UPDATE_BOOKMARK_PERIOD == 0:
+               singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
+
+            counter.increment()
 
 
    state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', None)
