@@ -144,7 +144,7 @@ def sync_table(conn_config, stream, state, desired_columns):
       cur.execute(select_sql)
 
       while True:
-         rows = cur.fetchmany(1)
+         rows = cur.fetchmany(batch_size)
          if not rows:
             break
 
