@@ -544,7 +544,9 @@ def main_impl():
       filter_schemas_prop = args.config.get('filter_schemas')
       filter_schemas = []
       if args.config.get('filter_schemas'):
-         filter_schemas = args.config.get('filter_schemas').split(',')
+         # split and remove whitespaces
+         filter_schemas = [schema.strip() for schema in args.config.get('filter_schemas').split(',')]
+
       do_discovery(conn_config, filter_schemas)
 
    elif args.catalog:

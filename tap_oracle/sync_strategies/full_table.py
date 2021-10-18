@@ -104,7 +104,6 @@ def sync_table(conn_config, stream, state, desired_columns):
                                  nascent_stream_version)
    singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
-   # cur = connection.cursor()
    md = metadata.to_map(stream.metadata)
    schema_name = md.get(()).get('schema-name')
 
@@ -141,11 +140,11 @@ def sync_table(conn_config, stream, state, desired_columns):
       LOGGER.info("select %s", select_sql)
 
       batch_size = 100
+      cur.arraysize = 500  # default 100 rows internally fetched by each internal call to db
       cur.execute(select_sql)
 
       while True:
-         # row = cur.fetchone()
-         rows = cur.fetchmany(batch_size)
+         rows = cur.fetchmany(1)
          if not rows:
             break
 
@@ -165,7 +164,6 @@ def sync_table(conn_config, stream, state, desired_columns):
                singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
             counter.increment()
-
 
    state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', None)
    #always send the activate version whether first run or subsequent
