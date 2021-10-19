@@ -79,6 +79,9 @@ def sync_table(conn_config, stream, state, desired_columns):
    connection = orc_db.open_connection(conn_config)
    connection.outputtypehandler = common.OutputTypeHandler
 
+   # TODO: najada check cache
+   connection.stmtcachesize = 40  # default 20
+
    cur = connection.cursor()
    LOGGER.info("Start executing 'ALTER SESSION' command for table %s", stream)
    cur.execute("ALTER SESSION SET TIME_ZONE = '00:00'")
@@ -139,9 +142,18 @@ def sync_table(conn_config, stream, state, desired_columns):
       rows_saved = 0
       LOGGER.info("select %s", select_sql)
 
-      batch_size = 100
-      cur.arraysize = 500  # default 100 rows internally fetched by each internal call to db
+      batch_size = 1000  # default 100 rows internally fetched by each internal call to db
+      cur.arraysize = 1000
+
+      # row_number = cur.execute("""SELECT COUNT(*) FROM {}.{} """.format(escaped_schema, escaped_table)).fetchone()
+      # new_select_sql = """SELECT * FROM ({})
+      #                     WHERE ROWNUM BETWEEN {}
+      #                     AND {}""".format(select_sql, 1, batch_size)
+      start = time.time()
+      LOGGER.info("START EXECUTING QUERY - %s", start)
       cur.execute(select_sql)
+      delta = time.time() - start
+      LOGGER.info("QUERY EXECUTED - %s", delta)
 
       while True:
          rows = cur.fetchmany(batch_size)
@@ -164,6 +176,9 @@ def sync_table(conn_config, stream, state, desired_columns):
                singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
             counter.increment()
+
+      stop = time.time() - delta
+      LOGGER.info("FINISHED RETRIEVING DATA - %s", stop)
 
    state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', None)
    #always send the activate version whether first run or subsequent
