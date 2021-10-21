@@ -416,14 +416,10 @@ def sync_method_for_streams(streams, state, default_replication_method):
             lookup[stream.tap_stream_id] = 'log_initial'
             traditional_streams.append(stream)
 
-         elif get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN') and get_bookmark(state, stream.tap_stream_id, 'scn'):
+         elif get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN'):
             #finishing previously interrupted full-table (first stage of logical replication)
             lookup[stream.tap_stream_id] = 'log_initial_interrupted'
             traditional_streams.append(stream)
-
-         #inconsistent state
-         elif get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN') and not get_bookmark(state, stream.tap_stream_id, 'scn'):
-            raise Exception("ORA_ROWSCN found(%s) in state implying log inintial full-table replication but no scn is present")
 
          else:
             #initial stage of LogMiner(full-table) has been completed. moving onto pure LogMiner

@@ -122,7 +122,8 @@ def sync_table(conn_config, stream, state, desired_columns):
 
    with metrics.record_counter(None) as counter:
       ora_rowscn = singer.get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN')
-      if ora_rowscn:
+      is_resuming_import = bool(ora_rowscn)
+      if is_resuming_import:
          LOGGER.info("Resuming Full Table replication %s from ORA_ROWSCN %s", nascent_stream_version, ora_rowscn)
          select_sql      = """SELECT {}, ORA_ROWSCN
                                 FROM {}.{}
@@ -134,8 +135,7 @@ def sync_table(conn_config, stream, state, desired_columns):
                                            ora_rowscn)
       else:
          select_sql      = """SELECT {}, ORA_ROWSCN
-                                FROM {}.{}
-                               ORDER BY ORA_ROWSCN ASC""".format(','.join(escaped_columns),
+                                FROM {}.{}""".format(','.join(escaped_columns),
                                                                     escaped_schema,
                                                                     escaped_table)
 
@@ -145,10 +145,6 @@ def sync_table(conn_config, stream, state, desired_columns):
       batch_size = 1000  # default 100 rows internally fetched by each internal call to db
       cur.arraysize = 1000
 
-      # row_number = cur.execute("""SELECT COUNT(*) FROM {}.{} """.format(escaped_schema, escaped_table)).fetchone()
-      # new_select_sql = """SELECT * FROM ({})
-      #                     WHERE ROWNUM BETWEEN {}
-      #                     AND {}""".format(select_sql, 1, batch_size)
       start = time.time()
       LOGGER.info("START EXECUTING QUERY - %s", start)
       cur.execute(select_sql)
@@ -170,12 +166,17 @@ def sync_table(conn_config, stream, state, desired_columns):
                                                           time_extracted)
 
             singer.write_message(record_message)
-            state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', ora_rowscn)
             rows_saved = rows_saved + 1
-            if rows_saved % UPDATE_BOOKMARK_PERIOD == 0:
-               singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
-
             counter.increment()
+
+            # TODO: We do not currently support resumable imports
+            # TODO: Leaving this fragment here in case we decide to support this in the future
+            # if is_resuming_import:
+            #    state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', ora_rowscn)
+            #
+            #    if rows_saved % UPDATE_BOOKMARK_PERIOD == 0:
+            #       singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
+
 
       stop = time.time() - delta
       LOGGER.info("FINISHED RETRIEVING DATA - %s", stop)
