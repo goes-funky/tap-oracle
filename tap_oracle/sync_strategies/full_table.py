@@ -21,7 +21,7 @@ def sync_view(conn_config, stream, state, desired_columns):
    connection.outputtypehandler = common.OutputTypeHandler
 
    cur = connection.cursor()
-   LOGGER.info("Start executing 'ALTER SESSION' command for view %s", stream)
+   LOGGER.info("Start executing 'ALTER SESSION' command for view %s - time %s", stream, utils.now())
    cur.execute("ALTER SESSION SET TIME_ZONE = '00:00'")
    cur.execute("""ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS."00+00:00"'""")
    cur.execute("""ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD"T"HH24:MI:SSXFF"+00:00"'""")
@@ -33,6 +33,7 @@ def sync_view(conn_config, stream, state, desired_columns):
    first_run = singer.get_bookmark(state, stream.tap_stream_id, 'version') is None
 
    #pick a new table version
+   LOGGER.info("Pick a new table version")
    nascent_stream_version = int(time.time() * 1000)
    state = singer.write_bookmark(state,
                                  stream.tap_stream_id,
@@ -47,6 +48,7 @@ def sync_view(conn_config, stream, state, desired_columns):
    escaped_columns = map(lambda c: common.prepare_columns_sql(stream, c), desired_columns)
    escaped_schema  = schema_name
    escaped_table   = stream.table
+   LOGGER.info("Activate version")
    activate_version_message = singer.ActivateVersionMessage(
       stream=stream.stream,
       version=nascent_stream_version)
@@ -79,11 +81,11 @@ def sync_table(conn_config, stream, state, desired_columns):
    connection = orc_db.open_connection(conn_config)
    connection.outputtypehandler = common.OutputTypeHandler
 
-   # TODO: najada check cache
+   # Increase Statement Caching for execution
    connection.stmtcachesize = 40  # default 20
-
    cur = connection.cursor()
-   LOGGER.info("Start executing 'ALTER SESSION' command for table %s", stream)
+   LOGGER.info("Start executing 'ALTER SESSION' command for table %s - time %s", stream, utils.now())
+
    cur.execute("ALTER SESSION SET TIME_ZONE = '00:00'")
    cur.execute("""ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD"T"HH24:MI:SS."00+00:00"'""")
    cur.execute("""ALTER SESSION SET NLS_TIMESTAMP_FORMAT='YYYY-MM-DD"T"HH24:MI:SSXFF"+00:00"'""")
@@ -94,6 +96,7 @@ def sync_table(conn_config, stream, state, desired_columns):
    #before writing the table version to state, check if we had one to begin with
    first_run = singer.get_bookmark(state, stream.tap_stream_id, 'version') is None
 
+   LOGGER.info("Pick a new table version - %s", utils.now())
    #pick a new table version IFF we do not have an ORA_ROWSCN in our state
    #the presence of an ORA_ROWSCN indicates that we were interrupted last time through
    if singer.get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN') is None:
@@ -107,6 +110,7 @@ def sync_table(conn_config, stream, state, desired_columns):
                                  nascent_stream_version)
    singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
+   LOGGER.info("Get schema - %s", utils.now())
    md = metadata.to_map(stream.metadata)
    schema_name = md.get(()).get('schema-name')
 
@@ -117,9 +121,11 @@ def sync_table(conn_config, stream, state, desired_columns):
       stream=stream.stream,
       version=nascent_stream_version)
 
+   LOGGER.info("Check first run - %s", utils.now())
    if first_run:
       singer.write_message(activate_version_message)
 
+   LOGGER.info("Trying record counter with metrics - %s", utils.now())
    with metrics.record_counter(None) as counter:
       ora_rowscn = singer.get_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN')
       is_resuming_import = bool(ora_rowscn)
@@ -145,11 +151,9 @@ def sync_table(conn_config, stream, state, desired_columns):
       batch_size = 1000  # default 100 rows internally fetched by each internal call to db
       cur.arraysize = 1000
 
-      start = time.time()
-      LOGGER.info("START EXECUTING QUERY - %s", start)
+      LOGGER.info("START EXECUTING QUERY - %s", utils.now())
       cur.execute(select_sql)
-      delta = time.time() - start
-      LOGGER.info("QUERY EXECUTED - %s", delta)
+      LOGGER.info("QUERY EXECUTED - %s", utils.now())
 
       while True:
          rows = cur.fetchmany(batch_size)
@@ -177,9 +181,7 @@ def sync_table(conn_config, stream, state, desired_columns):
             #    if rows_saved % UPDATE_BOOKMARK_PERIOD == 0:
             #       singer.write_message(singer.StateMessage(value=copy.deepcopy(state)))
 
-
-      stop = time.time() - delta
-      LOGGER.info("FINISHED RETRIEVING DATA - %s", stop)
+      LOGGER.info("FINISHED RETRIEVING DATA - %s", utils.now())
 
    state = singer.write_bookmark(state, stream.tap_stream_id, 'ORA_ROWSCN', None)
    #always send the activate version whether first run or subsequent
